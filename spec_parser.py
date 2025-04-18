@@ -1,45 +1,47 @@
-import fitz  # PyMuPDF
+import fitz  # for PDFs
 import docx
 import re
 
-def extract_text(file):
-    text = ""
+def analyze_spec(file):
+    # Read and combine document content
     if file.name.endswith(".pdf"):
-        with fitz.open(stream=file.read(), filetype="pdf") as doc:
-            for page in doc:
-                text += page.get_text()
+        doc = fitz.open(stream=file.read(), filetype="pdf")
+        full_text = " ".join([page.get_text() for page in doc])
     elif file.name.endswith(".docx"):
         doc = docx.Document(file)
-        text = "\n".join([para.text for para in doc.paragraphs])
+        full_text = " ".join([para.text for para in doc.paragraphs])
     else:
-        raise ValueError("Unsupported file type.")
-    return text
+        return {"error": "Unsupported file type"}
 
-def find_matches(text, role_keywords, action_keywords):
-    pattern = rf"(?i)(?:{'|'.join(role_keywords)}).*?(?:{'|'.join(action_keywords)}).*?[.\n]"
-    return re.findall(pattern, text)
+    # Clean text formatting
+    full_text = full_text.replace('\n', ' ').replace('  ', ' ').strip()
 
-def analyze_spec(file):
-    text = extract_text(file)
+    # Split text into individual sentences
+    sentences = re.split(r'(?<=[\.\?\!])\s+', full_text)
 
-    install_kw = ["install", "installation", "place", "set", "erect", "apply"]
-    material_kw = ["material", "supply", "provide", "deliver", "furnish"]
-
-    subs_kw = ["subcontractor", "trade contractor"]
-    gc_kw = ["contractor", "general contractor", "GC"]
-    client_kw = ["owner", "client", "employer", "authority"]
-
-    return {
-        "subcontractor": {
-            "install": find_matches(text, subs_kw, install_kw),
-            "material": find_matches(text, subs_kw, material_kw)
-        },
-        "gc": {
-            "install": find_matches(text, gc_kw, install_kw),
-            "material": find_matches(text, gc_kw, material_kw)
-        },
-        "client": {
-            "install": find_matches(text, client_kw, install_kw),
-            "material": find_matches(text, client_kw, material_kw)
-        }
+    result = {
+        "subcontractor": {"install": [], "material": []},
+        "gc": {"install": [], "material": []},
+        "client": {"install": [], "material": []}
     }
+
+    install_keywords = ["install", "erect", "set", "place", "apply"]
+    material_keywords = ["supply", "furnish", "provide", "deliver"]
+    role_keywords = {
+        "subcontractor": ["subcontractor", "trade contractor"],
+        "gc": ["general contractor", "gc", "builder"],
+        "client": ["owner", "client", "developer"]
+    }
+
+    # Loop through clean sentences only
+    for sentence in sentences:
+        lowered = sentence.lower()
+
+        for role_key, role_terms in role_keywords.items():
+            if any(term in lowered for term in role_terms):
+                if any(word in lowered for word in install_keywords):
+                    result[role_key]["install"].append(sentence.strip())
+                elif any(word in lowered for word in material_keywords):
+                    result[role_key]["material"].append(sentence.strip())
+
+    return result

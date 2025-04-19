@@ -1,9 +1,8 @@
-import fitz  # for PDFs
+import fitz  # PyMuPDF
 import docx
 import re
 
 def analyze_spec(file):
-    # Read and combine document content
     if file.name.endswith(".pdf"):
         doc = fitz.open(stream=file.read(), filetype="pdf")
         full_text = " ".join([page.get_text() for page in doc])
@@ -13,10 +12,7 @@ def analyze_spec(file):
     else:
         return {"error": "Unsupported file type"}
 
-    # Clean text formatting
     full_text = full_text.replace('\n', ' ').replace('  ', ' ').strip()
-
-    # Split text into individual sentences
     sentences = re.split(r'(?<=[\.\?\!])\s+', full_text)
 
     result = {
@@ -33,10 +29,8 @@ def analyze_spec(file):
         "client": ["owner", "client", "developer"]
     }
 
-    # Loop through clean sentences only
     for sentence in sentences:
         lowered = sentence.lower()
-
         for role_key, role_terms in role_keywords.items():
             if any(term in lowered for term in role_terms):
                 if any(word in lowered for word in install_keywords):

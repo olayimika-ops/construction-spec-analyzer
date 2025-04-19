@@ -1,103 +1,96 @@
 import streamlit as st
-from spec_parser import analyze_spec
+import os
+import docx
+import fitz  # PyMuPDF
 import pandas as pd
 
-# ------------------ Page Setup ------------------
-st.set_page_config(page_title="Spec Analyzer", page_icon="📄", layout="wide")
+from io import StringIO
+from datetime import datetime
 
-# ------------------ Sidebar Guide ------------------
-st.sidebar.title("🧭 Walkthrough")
-st.sidebar.markdown("""
-**How to Use:**
-1. Upload a construction spec (.pdf or .docx)
-2. App will extract responsibilities for:
-   - Subcontractor
-   - General Contractor
-   - Client / Owner
-3. View results grouped by role
-4. Download as a .csv summary file
-""")
+st.set_page_config(page_title="Construction Spec Analyzer", layout="wide")
 
-# ------------------ Theme Switch ------------------
-theme = st.sidebar.radio("🌗 Choose Theme", ["Light", "Dark"])
-if theme == "Dark":
-    st.markdown(
-        "<style>body { background-color: #1E1E1E; color: white; }</style>",
-        unsafe_allow_html=True
-    )
-else:
-    st.markdown(
-        "<style>body { background-color: white; color: black; }</style>",
-        unsafe_allow_html=True
-    )
+# --- HEADER ---
+st.title("📄 Construction Spec Analyzer")
+st.caption("Extract stakeholder responsibilities for materials and installation tasks.")
 
-# ------------------ Title & Upload ------------------
-st.title("📄 Construction Specification Analyzer (Offline)")
-st.markdown("Quickly identify responsibilities across stakeholders from your spec document.")
+# --- UPLOAD ---
+uploaded_file = st.file_uploader("Upload a construction spec file (.pdf or .docx)", type=["pdf", "docx"])
 
-uploaded_file = st.file_uploader("📁 Upload a PDF or DOCX spec file", type=["pdf", "docx"])
+# --- FUNCTIONS ---
+def extract_text_from_pdf(file):
+    doc = fitz.open(stream=file.read(), filetype="pdf")
+    text = "\n".join([page.get_text() for page in doc])
+    return text
 
-# ------------------ Main Analysis ------------------
+def extract_text_from_docx(file):
+    doc = docx.Document(file)
+    return "\n".join([para.text for para in doc.paragraphs if para.text.strip() != ""])
+
+def analyze_spec(text):
+    results = {
+        "Subcontractor": {"Installation": [], "Materials": []},
+        "General Contractor": {"Installation": [], "Materials": []},
+        "Client": {"Installation": [], "Materials": []}
+    }
+
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+
+    for line in lines:
+        lower = line.lower()
+
+        # Installation phrases
+        if any(x in lower for x in ["install", "set", "erect", "place"]):
+            if "subcontractor" in lower:
+                results["Subcontractor"]["Installation"].append(line)
+            elif "general contractor" in lower or "gc" in lower:
+                results["General Contractor"]["Installation"].append(line)
+            elif "client" in lower or "owner" in lower:
+                results["Client"]["Installation"].append(line)
+
+        # Material phrases
+        if any(x in lower for x in ["supply", "furnish", "provide", "deliver"]):
+            if "subcontractor" in lower:
+                results["Subcontractor"]["Materials"].append(line)
+            elif "general contractor" in lower or "gc" in lower:
+                results["General Contractor"]["Materials"].append(line)
+            elif "client" in lower or "owner" in lower:
+                results["Client"]["Materials"].append(line)
+
+    return results
+
+def flatten_results(results_dict):
+    rows = []
+    for role, categories in results_dict.items():
+        for cat, lines in categories.items():
+            for line in lines:
+                rows.append({"Role": role, "Category": cat, "Responsibility": line})
+    return pd.DataFrame(rows)
+
+# --- MAIN LOGIC ---
 if uploaded_file:
-    with st.spinner("⏳ Analyzing the document..."):
-        try:
-            result = analyze_spec(uploaded_file)
-            st.success("✅ Analysis Complete!")
+    with st.spinner("Analyzing document..."):
+        ext = uploaded_file.name.split(".")[-1].lower()
+        if ext == "pdf":
+            raw_text = extract_text_from_pdf(uploaded_file)
+        elif ext == "docx":
+            raw_text = extract_text_from_docx(uploaded_file)
+        else:
+            st.error("Unsupported file type.")
+            st.stop()
 
-            # ------------------ Grouped Role Display ------------------
-            st.subheader("📊 Responsibilities by Role")
-            roles = {
-                "subcontractor": "👷 Subcontractor",
-                "gc": "🏗️ General Contractor",
-                "client": "🧑‍💼 Client / Owner"
-            }
+        results = analyze_spec(raw_text)
+        df = flatten_results(results)
 
-            data = []  # For CSV download
+        st.success("✅ Responsibilities extracted successfully!")
+        st.dataframe(df, use_container_width=True)
 
-            for role_key, role_label in roles.items():
-                with st.expander(f"{role_label}"):
-                    install = result[role_key]["install"]
-                    material = result[role_key]["material"]
+        csv = df.to_csv(index=False)
+        st.download_button("⬇️ Download Result as CSV", csv, file_name="spec_analysis.csv", mime="text/csv")
 
-                    # Install
-                    st.markdown("#### 📌 Installation Responsibilities")
-                    if install:
-                        for item in install:
-                            st.markdown(f"- {item.strip()}")
-                            data.append({
-                                "Role": role_label.replace("👷", "").replace("🏗️", "").replace("🧑‍💼", "").strip(),
-                                "Responsibility Type": "Installation",
-                                "Responsibility": item.strip()
-                            })
-                    else:
-                        st.markdown("_No installation responsibilities found._")
-
-                    # Material
-                    st.markdown("#### 🧱 Material Responsibilities")
-                    if material:
-                        for item in material:
-                            st.markdown(f"- {item.strip()}")
-                            data.append({
-                                "Role": role_label.replace("👷", "").replace("🏗️", "").replace("🧑‍💼", "").strip(),
-                                "Responsibility Type": "Material",
-                                "Responsibility": item.strip()
-                            })
-                    else:
-                        st.markdown("_No material responsibilities found._")
-
-            # ------------------ Download Button ------------------
-            st.markdown("---")
-            df = pd.DataFrame(data)
-            csv = df.to_csv(index=False).encode('utf-8')
-
-            st.download_button(
-                label="📥 Download Responsibility Table (CSV)",
-                data=csv,
-                file_name="spec_responsibilities_summary.csv",
-                mime="text/csv"
-            )
-
-        except Exception as e:
-            st.error(f"❌ An error occurred: {e}")
-else:
-    st.info("Upload your spec file above to begin.")
+# --- FOOTER ---
+st.markdown("---")
+st.markdown(
+    "📲 **Try this app on the web:** [Launch Construction Spec Analyzer](https://construction-spec-analyzer-mcsc3x5gpcthq6i4nhbvmu.streamlit.app/)",
+    unsafe_allow_html=True
+)
+st.caption(f"Built by Olayinka E. Adedoyin · Auburn University · {datetime.now():%B %Y}")

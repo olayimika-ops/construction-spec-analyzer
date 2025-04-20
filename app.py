@@ -5,11 +5,25 @@ import fitz  # PyMuPDF
 import docx
 import re
 import os
+from pathlib import Path
+import platform
 
-# ✅ Step 1: Make sure the results folder exists
-os.makedirs("results", exist_ok=True)
+# ===== 1. Get the Downloads folder path =====
+def get_download_path():
+    system = platform.system()
+    if system == "Windows":
+        return str(Path.home() / "Downloads")
+    elif system == "Darwin":  # macOS
+        return str(Path.home() / "Downloads")
+    elif system == "Linux":
+        return str(Path.home() / "Downloads")
+    else:
+        return "results"  # fallback
 
-# ✅ Step 2: Function to analyze the spec
+DOWNLOAD_DIR = get_download_path()
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# ===== 2. Analyze the spec document =====
 def analyze_spec(file):
     if file.name.endswith(".pdf"):
         doc = fitz.open(stream=file.read(), filetype="pdf")
@@ -48,32 +62,24 @@ def analyze_spec(file):
 
     return result
 
-# ✅ Step 3: Streamlit UI setup
+# ===== 3. UI Setup =====
 st.set_page_config(page_title="Construction Spec Analyzer", layout="wide")
+st.title("📄 Construction Spec Analyzer")
 
-# Sidebar theme switcher
+# Theme toggle
 theme = st.sidebar.radio("Choose Theme", ["Light", "Dark"])
 if theme == "Dark":
     st.markdown("""
-        <style>
-        body { background-color: #0e1117; color: white; }
-        .stApp { background-color: #0e1117; }
-        </style>
+        <style> body { background-color: #0e1117; color: white; } .stApp { background-color: #0e1117; } </style>
     """, unsafe_allow_html=True)
 else:
     st.markdown("""
-        <style>
-        body { background-color: white; color: black; }
-        .stApp { background-color: white; }
-        </style>
+        <style> body { background-color: white; color: black; } .stApp { background-color: white; } </style>
     """, unsafe_allow_html=True)
 
-st.title("📄 Construction Spec Analyzer")
-
-# ✅ Step 4: Upload file
+# ===== 4. Upload and Analyze Section =====
 uploaded_file = st.file_uploader("Upload a PDF or DOCX construction spec file", type=["pdf", "docx"])
 
-# ✅ Step 5: Analyze file and store result
 if uploaded_file:
     with st.spinner("Processing document..."):
         results = analyze_spec(uploaded_file)
@@ -92,7 +98,6 @@ if uploaded_file:
             st.warning("No assignable responsibilities found in the uploaded document.")
         else:
             df = pd.DataFrame(display_rows)
-
             st.subheader("🔍 Extracted Responsibilities")
             grouped = df.groupby(['Role', 'Category'])
 
@@ -100,13 +105,13 @@ if uploaded_file:
                 with st.expander(f"{role} - {category} ({len(group)})"):
                     st.table(group[['Responsibility']].reset_index(drop=True))
 
-            # ✅ Step 6: Save to local results folder
+            # Save to Downloads with timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename_base = uploaded_file.name.split(".")[0]
-            save_path = f"results/{filename_base}_{timestamp}.csv"
+            save_path = os.path.join(DOWNLOAD_DIR, f"{filename_base}_{timestamp}.csv")
             df.to_csv(save_path, index=False)
 
-            # ✅ Step 7: Download button
+            # Offer CSV download
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Download as CSV",
@@ -115,7 +120,21 @@ if uploaded_file:
                 mime="text/csv"
             )
 
-# Footer
+# ===== 5. History Viewer =====
+st.sidebar.markdown("---")
+st.sidebar.subheader("📂 View Saved Analyses")
+
+csv_files = sorted([f for f in os.listdir(DOWNLOAD_DIR) if f.endswith(".csv")])
+if csv_files:
+    selected = st.sidebar.selectbox("Select file to preview", csv_files)
+    file_path = os.path.join(DOWNLOAD_DIR, selected)
+    df_preview = pd.read_csv(file_path)
+    st.sidebar.write("Preview of selected result:")
+    st.sidebar.dataframe(df_preview.head())
+else:
+    st.sidebar.info("No analysis files found in Downloads folder.")
+
+# ===== 6. Footer =====
 st.markdown("---")
 st.markdown(
     "📲 **Try this app online:** [Launch App](https://construction-specs-analyzer.streamlit.app)",

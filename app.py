@@ -5,25 +5,8 @@ import fitz  # PyMuPDF
 import docx
 import re
 import os
-from pathlib import Path
-import platform
 
-# ===== 1. Get the Downloads folder path =====
-def get_download_path():
-    system = platform.system()
-    if system == "Windows":
-        return str(Path.home() / "Downloads")
-    elif system == "Darwin":  # macOS
-        return str(Path.home() / "Downloads")
-    elif system == "Linux":
-        return str(Path.home() / "Downloads")
-    else:
-        return "results"  # fallback
-
-DOWNLOAD_DIR = get_download_path()
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-# ===== 2. Analyze the spec document =====
+# === Utility function to analyze specification content ===
 def analyze_spec(file):
     if file.name.endswith(".pdf"):
         doc = fitz.open(stream=file.read(), filetype="pdf")
@@ -35,7 +18,7 @@ def analyze_spec(file):
         return {"error": "Unsupported file type"}
 
     full_text = full_text.replace('\n', ' ').replace('  ', ' ').strip()
-    sentences = re.split(r'(?<=[\.\?!])\s+', full_text)
+    sentences = re.split(r'(?<=[\.\?\!])\s+', full_text)
 
     result = {
         "subcontractor": {"install": [], "material": []},
@@ -62,26 +45,42 @@ def analyze_spec(file):
 
     return result
 
-# ===== 3. UI Setup =====
+# === Prepare app layout ===
 st.set_page_config(page_title="Construction Spec Analyzer", layout="wide")
-st.title("📄 Construction Spec Analyzer")
 
-# Theme toggle
+# === THEME TOGGLE ===
 theme = st.sidebar.radio("Choose Theme", ["Light", "Dark"])
 if theme == "Dark":
-    st.markdown("""
-        <style> body { background-color: #0e1117; color: white; } .stApp { background-color: #0e1117; } </style>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+        body, .stApp { background-color: #0e1117; color: white; }
+        </style>
+        """, unsafe_allow_html=True
+    )
 else:
-    st.markdown("""
-        <style> body { background-color: white; color: black; } .stApp { background-color: white; } </style>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+        body, .stApp { background-color: white; color: black; }
+        </style>
+        """, unsafe_allow_html=True
+    )
 
-# ===== 4. Upload and Analyze Section =====
-uploaded_file = st.file_uploader("Upload a PDF or DOCX construction spec file", type=["pdf", "docx"])
+# === TITLE ===
+st.title("📄 Construction Spec Analyzer")
+st.markdown("Upload your construction specification (.pdf or .docx) to extract material and installation responsibilities.")
 
+# === File uploader ===
+uploaded_file = st.file_uploader("Upload a specification file", type=["pdf", "docx"])
+
+# === Create Downloads/spec_outputs folder if it doesn't exist ===
+DOWNLOAD_DIR = os.path.join(os.path.expanduser("~"), "Downloads", "spec_outputs")
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# === PROCESS uploaded spec ===
 if uploaded_file:
-    with st.spinner("Processing document..."):
+    with st.spinner("Analyzing document..."):
         results = analyze_spec(uploaded_file)
 
         display_rows = []
@@ -95,49 +94,38 @@ if uploaded_file:
                     })
 
         if not display_rows:
-            st.warning("No assignable responsibilities found in the uploaded document.")
+            st.warning("No assignable responsibilities found in this spec.")
         else:
             df = pd.DataFrame(display_rows)
-            st.subheader("🔍 Extracted Responsibilities")
             grouped = df.groupby(['Role', 'Category'])
 
+            st.subheader("🔍 Extracted Responsibilities")
             for (role, category), group in grouped:
                 with st.expander(f"{role} - {category} ({len(group)})"):
                     st.table(group[['Responsibility']].reset_index(drop=True))
 
-            # Save to Downloads with timestamp
+            # Save analysis to local file system
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename_base = uploaded_file.name.split(".")[0]
-            save_path = os.path.join(DOWNLOAD_DIR, f"{filename_base}_{timestamp}.csv")
-            df.to_csv(save_path, index=False)
+            filename = f"spec_analysis_{timestamp}.csv"
+            filepath = os.path.join(DOWNLOAD_DIR, filename)
+            df.to_csv(filepath, index=False)
 
-            # Offer CSV download
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download as CSV",
-                data=csv,
-                file_name="extracted_responsibilities.csv",
-                mime="text/csv"
-            )
+            st.success(f"✅ Analysis saved to: `{filepath}`")
 
-# ===== 5. History Viewer =====
+            # Also allow user to download instantly
+            st.download_button("📥 Download CSV", data=df.to_csv(index=False), file_name=filename, mime="text/csv")
+
+# === 5. View Saved Files (NO preview, as requested) ===
 st.sidebar.markdown("---")
 st.sidebar.subheader("📂 View Saved Analyses")
-
 csv_files = sorted([f for f in os.listdir(DOWNLOAD_DIR) if f.endswith(".csv")])
 if csv_files:
-    selected = st.sidebar.selectbox("Select file to preview", csv_files)
-    file_path = os.path.join(DOWNLOAD_DIR, selected)
-    df_preview = pd.read_csv(file_path)
-    st.sidebar.write("Preview of selected result:")
-    st.sidebar.dataframe(df_preview.head())
+    selected_file = st.sidebar.selectbox("Select file to preview", csv_files)
+    # No preview shown intentionally
 else:
     st.sidebar.info("No analysis files found in Downloads folder.")
 
-# ===== 6. Footer =====
+# === Footer ===
 st.markdown("---")
-st.markdown(
-    "📲 **Try this app online:** [Launch App](https://construction-specs-analyzer.streamlit.app)",
-    unsafe_allow_html=True
-)
 st.caption(f"Built by Olayinka E. Adedoyin · Auburn University · Last updated: {datetime.now():%B %d, %Y}")
+

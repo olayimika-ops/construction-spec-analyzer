@@ -3,14 +3,37 @@ from datetime import datetime
 import pandas as pd
 import fitz  # PyMuPDF
 import docx
-import os
 import re
+import os
 import glob
 
-# Setup download directory in user's Downloads folder
-DOWNLOAD_DIR = os.path.join(os.path.expanduser("~"), "Downloads", "spec_outputs")
+# === CONFIGURATION ===
+st.set_page_config(page_title="Construction Spec Analyzer", layout="wide")
+DOWNLOAD_DIR = "saved_specs"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+# === SIDEBAR: THEME TOGGLE ===
+theme = st.sidebar.radio("Choose Theme", ["Light", "Dark"])
+if theme == "Dark":
+    st.markdown(
+        """
+        <style>
+        body, .stApp { background-color: #0e1117; color: white; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        """
+        <style>
+        body, .stApp { background-color: white; color: black; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# === NLP FUNCTION FOR ANALYSIS ===
 def analyze_spec(file):
     if file.name.endswith(".pdf"):
         doc = fitz.open(stream=file.read(), filetype="pdf")
@@ -49,64 +72,30 @@ def analyze_spec(file):
 
     return result
 
-# Streamlit page setup
-st.set_page_config(page_title="Construction Spec Analyzer", layout="wide")
-
-# Theme toggle
-theme = st.sidebar.radio("Choose Theme", ["Light", "Dark"])
-
-if theme == "Dark":
-    st.markdown(
-        """
-        <style>
-        body { background-color: #0e1117; color: white; }
-        .stApp { background-color: #0e1117; }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-else:
-    st.markdown(
-        """
-        <style>
-        body { background-color: white; color: black; }
-        .stApp { background-color: white; }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
+# === MAIN INTERFACE ===
 st.title("📄 Construction Spec Analyzer")
 uploaded_file = st.file_uploader("Upload a PDF or DOCX construction spec file", type=["pdf", "docx"])
 
 if uploaded_file:
-    with st.spinner("Analyzing specification..."):
+    with st.spinner("Processing document..."):
         results = analyze_spec(uploaded_file)
 
+        # Format output
         display_rows = []
         for role, duties in results.items():
             for category, entries in duties.items():
                 for entry in entries:
-                    display_rows.append({
-                        "Role": role.title(),
-                        "Category": category.title(),
-                        "Responsibility": entry
-                    })
+                    display_rows.append({"Role": role.title(), "Category": category.title(), "Responsibility": entry})
 
         if not display_rows:
-            st.warning("No responsibilities extracted.")
+            st.warning("No assignable responsibilities found in the uploaded document.")
         else:
             df = pd.DataFrame(display_rows)
-            grouped = df.groupby(['Role', 'Category'])
 
-            st.subheader("🔍 Extracted Responsibilities")
-            for (role, category), group in grouped:
-                with st.expander(f"{role} - {category} ({len(group)})"):
-                    st.table(group[['Responsibility']].reset_index(drop=True))
-
-            # Save CSV
+            # Save file to disk with timestamp + filename
+            base_name = os.path.splitext(uploaded_file.name)[0].replace(" ", "_")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            csv_filename = f"spec_analysis_{timestamp}.csv"
+            csv_filename = f"{base_name}_analysis_{timestamp}.csv"
             csv_path = os.path.join(DOWNLOAD_DIR, csv_filename)
             df.to_csv(csv_path, index=False)
 
@@ -118,19 +107,26 @@ if uploaded_file:
                 mime="text/csv"
             )
 
-# View saved analyses
+            st.subheader("🔍 Extracted Responsibilities")
+            grouped = df.groupby(['Role', 'Category'])
+            for (role, category), group in grouped:
+                with st.expander(f"{role} - {category} ({len(group)})"):
+                    st.table(group[['Responsibility']].reset_index(drop=True))
+
+# === VIEW SAVED ANALYSES ===
 st.sidebar.markdown("---")
 st.sidebar.subheader("📂 View Saved Analyses")
 
-csv_paths = sorted(glob.glob(os.path.join(DOWNLOAD_DIR, "*.csv")), reverse=True)
+csv_paths = sorted(glob.glob(os.path.join(DOWNLOAD_DIR, "*_analysis_*.csv")), reverse=True)
 csv_files = [os.path.basename(p) for p in csv_paths]
 
 if csv_files:
     selected_file = st.sidebar.selectbox("Select file to preview", csv_files)
+    # No preview content is shown, just selection.
 else:
-    st.sidebar.info("No analysis files found in Downloads/spec_outputs.")
+    st.sidebar.info("No saved analysis files yet.")
 
-# Footer
+# === FOOTER ===
 st.markdown("---")
 st.markdown(
     "📲 **Try this app online:** [Launch App](https://construction-spec-analyzer.streamlit.app)",

@@ -1,10 +1,15 @@
 import streamlit as st
-from datetime import datetime  # ✅ Add this line
+from datetime import datetime
 import pandas as pd
 import fitz  # PyMuPDF
 import docx
 import re
+import os
 
+# ✅ Step 1: Make sure the results folder exists
+os.makedirs("results", exist_ok=True)
+
+# ✅ Step 2: Function to analyze the spec
 def analyze_spec(file):
     if file.name.endswith(".pdf"):
         doc = fitz.open(stream=file.read(), filetype="pdf")
@@ -16,7 +21,7 @@ def analyze_spec(file):
         return {"error": "Unsupported file type"}
 
     full_text = full_text.replace('\n', ' ').replace('  ', ' ').strip()
-    sentences = re.split(r'(?<=[\.\?\!])\s+', full_text)
+    sentences = re.split(r'(?<=[\.\?!])\s+', full_text)
 
     result = {
         "subcontractor": {"install": [], "material": []},
@@ -43,84 +48,77 @@ def analyze_spec(file):
 
     return result
 
+# ✅ Step 3: Streamlit UI setup
 st.set_page_config(page_title="Construction Spec Analyzer", layout="wide")
 
-# STEP 1: Theme toggle radio button in sidebar
+# Sidebar theme switcher
 theme = st.sidebar.radio("Choose Theme", ["Light", "Dark"])
-
-# STEP 2: Apply CSS based on theme selection
 if theme == "Dark":
-    st.markdown(
-        """
+    st.markdown("""
         <style>
-        body {
-            background-color: #0e1117;
-            color: white;
-        }
-        .stApp {
-            background-color: #0e1117;
-        }
+        body { background-color: #0e1117; color: white; }
+        .stApp { background-color: #0e1117; }
         </style>
-        """,
-        unsafe_allow_html=True
-    )
+    """, unsafe_allow_html=True)
 else:
-    st.markdown(
-        """
+    st.markdown("""
         <style>
-        body {
-            background-color: white;
-            color: black;
-        }
-        .stApp {
-            background-color: white;
-        }
+        body { background-color: white; color: black; }
+        .stApp { background-color: white; }
         </style>
-        """,
-        unsafe_allow_html=True
-    )
+    """, unsafe_allow_html=True)
 
-# App Header
 st.title("📄 Construction Spec Analyzer")
 
-# Upload file section
+# ✅ Step 4: Upload file
 uploaded_file = st.file_uploader("Upload a PDF or DOCX construction spec file", type=["pdf", "docx"])
 
+# ✅ Step 5: Analyze file and store result
 if uploaded_file:
     with st.spinner("Processing document..."):
         results = analyze_spec(uploaded_file)
 
-        # Prepare results for display
         display_rows = []
         for role, duties in results.items():
             for category, entries in duties.items():
                 for entry in entries:
-                    display_rows.append({"Role": role.title(), "Category": category.title(), "Responsibility": entry})
+                    display_rows.append({
+                        "Role": role.title(),
+                        "Category": category.title(),
+                        "Responsibility": entry
+                    })
 
         if not display_rows:
             st.warning("No assignable responsibilities found in the uploaded document.")
         else:
             df = pd.DataFrame(display_rows)
+
+            st.subheader("🔍 Extracted Responsibilities")
             grouped = df.groupby(['Role', 'Category'])
 
-            # Display grouped data
-            st.subheader("🔍 Extracted Responsibilities")
             for (role, category), group in grouped:
                 with st.expander(f"{role} - {category} ({len(group)})"):
                     st.table(group[['Responsibility']].reset_index(drop=True))
 
-            # Download CSV button
+            # ✅ Step 6: Save to local results folder
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename_base = uploaded_file.name.split(".")[0]
+            save_path = f"results/{filename_base}_{timestamp}.csv"
+            df.to_csv(save_path, index=False)
+
+            # ✅ Step 7: Download button
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Download as CSV",
                 data=csv,
-                file_name='extracted_responsibilities.csv',
-                mime='text/csv'
+                file_name="extracted_responsibilities.csv",
+                mime="text/csv"
             )
+
 # Footer
 st.markdown("---")
 st.markdown(
-    "📲 **Try this app online:** [Launch App](https://construction-spec-analyzer.streamlit.app)",
+    "📲 **Try this app online:** [Launch App](https://construction-specs-analyzer.streamlit.app)",
     unsafe_allow_html=True
 )
 st.caption(f"Built by Olayinka E. Adedoyin · Auburn University · Last updated: {datetime.now():%B %d, %Y}")

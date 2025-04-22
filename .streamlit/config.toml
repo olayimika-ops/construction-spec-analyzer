@@ -2,6 +2,7 @@
 base="light"
 
 [server]
+maxUploadSize = 1000
 headless = true
 enableCORS = false
 enableXsrfProtection = false

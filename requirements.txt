@@ -1,5 +1,5 @@
 streamlit
-PyMuPDF
+pandas
 python-docx
-streamlit-nightly
-
+PyMuPDF
+sentence-transformers

@@ -2,7 +2,9 @@ streamlit
 pandas
 python-docx
 PyMuPDF
-torch==2.0.1+cpu
-torchvision==0.15.2+cpu
+torch==2.0.1
+torchvision==0.15.2
 torchaudio==2.0.2
-sentence-transformers
+sentence-transformers==2.2.2
+transformers==4.31.0
+huggingface-hub==0.16.4

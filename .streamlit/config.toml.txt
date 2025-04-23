@@ -1,0 +1,9 @@
+[theme]
+base="light"
+
+[server]
+maxUploadSize = 1000
+enableXsrfProtection = false
+
+[client]
+showSidebarNavigation = true

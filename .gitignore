@@ -1,8 +1,15 @@
+# Ignore virtual environment
 venv/
+
+# Ignore build and packaging artifacts
 dist/
 build/
-__pycache__/
-*.exe
 *.spec
+*.exe
+
+# Ignore Python cache
+__pycache__/
 *.pyc
 
+# Optional: ignore results folder from being tracked
+saved_specs/

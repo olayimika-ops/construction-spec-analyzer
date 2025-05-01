@@ -1,11 +1,10 @@
-[theme]
-base="light"
-primaryColor="#2E8B57"
-font="sans serif"
-
 [server]
 maxUploadSize = 1000
-enableXsrfProtection = false
 
-[client]
-showSidebarNavigation = true
+[theme]
+base = "light"
+primaryColor = "#004080"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#000000"
+font = "sans serif"
